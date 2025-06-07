@@ -106,7 +106,7 @@ class Particle:
         self.x = x
         self.y = y
         self.color = color
-        self.radius = random.uniform(1, 3)
+        self.radius = random.uniform(3, 9)  # 3倍程度の大きさに変更
         self.speed = random.uniform(1, 3)
         angle = random.uniform(0, 2 * math.pi)  # ランダムな方向（0〜2π）
         self.dx = math.cos(angle) * self.speed
@@ -136,11 +136,12 @@ class DeathEffect:
         self.alpha = 255  # 完全に不透明から開始
         self.particles = []
         self.start_time = time.time()
+        self.last_burst_time = time.time()  # 最後に丸を放出した時間
+        self.burst_interval = 0.5  # 丸放出の間隔（秒）
         self.duration = 3.0  # エフェクト持続時間（秒）
         
-        # パーティクルを生成
-        for _ in range(20):  # 20個のパーティクルを生成
-            self.particles.append(Particle(x, y))
+        # 初期パーティクルを生成
+        self.create_burst()
             
     def update(self):
         # 経過時間の計算
@@ -153,9 +154,22 @@ class DeathEffect:
         # 徐々に下に移動
         self.y = self.original_y + (progress * 30)  # 3秒かけて30ピクセル下に移動
         
+        # 0.5秒ごとに新しい丸を放出
+        current_time = time.time()
+        if current_time - self.last_burst_time >= self.burst_interval:
+            self.create_burst()
+            self.last_burst_time = current_time
+        
         # パーティクルの更新
-        for particle in self.particles:
+        for particle in self.particles[:]:
             particle.update()
+            if not particle.is_alive():
+                self.particles.remove(particle)
+    
+    def create_burst(self):
+        """新しいパーティクル群を生成"""
+        for _ in range(20):  # 一度に放出するパーティクル数
+            self.particles.append(Particle(self.x, self.y))
             
     def draw(self):
         # 半透明の敵を描画
@@ -246,9 +260,12 @@ def reset_game():
     words_short = load_words_from_file('words_short.txt')
     words_medium = load_words_from_file('words_medium.txt')
     words_long = load_words_from_file('words_long.txt')
-    current_difficulty = 0  # 難易度をリセット
     
-    current_word = get_new_word()
+    # 難易度をリセット
+    current_difficulty = 0
+    
+    # 最初の単語は必ずshort単語リストから選択
+    current_word = random.choice(words_short)
     typed_word = ""
     score = 0
     start_time = time.time()
@@ -443,6 +460,7 @@ FPS = 120
 
 # カスタムイベント定義
 ENEMY_RESPAWN_EVENT = pygame.USEREVENT + 1
+GAME_CLEAR_EVENT = pygame.USEREVENT + 2
 
 while running:
     # イベント処理
@@ -468,18 +486,16 @@ while running:
                         score += len(current_word)
                         correct_words += 1
                         
-                        # 敵の撃破エフェクトを作成
-                        create_enemy_death_effect()
-                        
                         # 目標達成チェック
                         if correct_words >= target_words:
+                            # ゲームクリア時のみエフェクトを作成
+                            create_enemy_death_effect()
                             game_active = False
-                            game_state = STATE_CLEAR
+                            # 5秒後にクリア画面に遷移するタイマーを設定
+                            pygame.time.set_timer(GAME_CLEAR_EVENT, 5000, True)
                             # タイマーを停止するために終了時間を記録
                             end_time = time.time()
                         else:
-                            # 3秒後に新しい敵を出現させる
-                            pygame.time.set_timer(ENEMY_RESPAWN_EVENT, 3000, True)
                             current_word = get_new_word()
                             typed_word = ""
                     else:
@@ -509,18 +525,16 @@ while running:
                             score += len(current_word)
                             correct_words += 1
                             
-                            # 敵の撃破エフェクトを作成
-                            create_enemy_death_effect()
-                            
                             # 目標達成チェック
                             if correct_words >= target_words:
+                                # ゲームクリア時のみエフェクトを作成
+                                create_enemy_death_effect()
                                 game_active = False
-                                game_state = STATE_CLEAR
+                                # 5秒後にクリア画面に遷移するタイマーを設定
+                                pygame.time.set_timer(GAME_CLEAR_EVENT, 5000, True)
                                 # タイマーを停止するために終了時間を記録
                                 end_time = time.time()
                             else:
-                                # 3秒後に新しい敵を出現させる
-                                pygame.time.set_timer(ENEMY_RESPAWN_EVENT, 3000, True)
                                 current_word = get_new_word()
                                 typed_word = ""
                     
@@ -534,10 +548,9 @@ while running:
             if event.key in keys_pressed:
                 keys_pressed[event.key] = False
                 
-        elif event.type == ENEMY_RESPAWN_EVENT:
-            # 敵キャラクターを再出現させる
-            enemy = Character(RED, False)
-            enemy_active = True
+        elif event.type == GAME_CLEAR_EVENT:
+            # 5秒後にクリア画面に遷移
+            game_state = STATE_CLEAR
     
     # キャラクターの更新（ゲーム中のみ）
     if game_state == STATE_GAME and game_active:
